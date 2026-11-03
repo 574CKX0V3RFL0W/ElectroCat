@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "ElectroCat — Add to my parts list",
+  "version": "1.0.0",
+  "description": "Capture electronic parts from selected text, product links and page URLs into your local ElectroCat inventory.",
+  "permissions": ["contextMenus", "tabs", "activeTab", "scripting"],
+  "host_permissions": ["http://127.0.0.1:8765/*", "http://localhost:8765/*"],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_title": "Add to ElectroCat", "default_popup": "popup.html"}
+}

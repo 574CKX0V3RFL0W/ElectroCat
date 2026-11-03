@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#122a3c">
+  <title>ElectroCat — Electronic Parts Catalog</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">⚡</span><span>Electro<span>Cat</span><small>COMPONENT INVENTORY</small></span></div>
+      <nav>
+        <button class="nav-link active" id="nav-parts"><span>▦</span> Inventory <span id="side-count" class="nav-count">0</span></button>
+        <button class="nav-link" id="nav-add"><span>＋</span> Add entry</button>
+        <button class="nav-link" id="nav-backup"><span>↓</span> Excel export</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="online-dot"><i></i> Local &amp; private</div>
+        <p>Excel backup after each edit</p>
+        <a href="https://print.natey.me/" target="_blank" rel="noopener">Cat Printer ↗</a>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="crumb">Workspace <span>/</span> <strong>Inventory</strong></div>
+        <div class="top-actions">
+          <span class="save-status" id="save-status">● All changes backed up</span>
+          <button class="btn outline" id="nav-print">▤ Print stickers</button>
+          <button class="btn ghost" id="download-xlsx">↧ Export Excel</button>
+        </div>
+      </header>
+      <section class="content">
+        <div class="eyebrow">YOUR WORKBENCH</div>
+        <div class="page-title">
+          <div><h1>Component inventory<span class="accent">.</span></h1><p>Every part, every parameter, always within reach.</p></div>
+          <button class="btn primary" id="add-entry">＋ Add entry</button>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><span>TOTAL ENTRIES</span><strong id="total-count">0</strong><small>Registered components</small></div>
+          <div class="stat"><span>CATEGORIES</span><strong id="category-count">0</strong><small>Part families</small></div>
+          <div class="stat"><span>NEED REVIEW</span><strong id="review-count">0</strong><small>Confirm their datasheets</small></div>
+          <div class="stat highlight"><span>LABEL FORMAT</span><strong>384 <em>px</em></strong><small>Native MXW01 width</small></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-heading">
+            <div><h2>My parts <span class="muted-count" id="table-count"></span></h2><p>Newest registrations appear first.</p></div>
+            <div class="panel-controls">
+              <button class="btn outline" id="print-selected">▤ Print stickers <span id="selection-count"></span></button>
+            </div>
+          </div>
+          <div class="filters">
+            <label class="search-box"><span>⌕</span><input id="search" type="search" placeholder="Search parts, packages, specifications…" autocomplete="off"></label>
+            <select id="filter-category" aria-label="Filter by category"><option value="">All categories</option></select>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th class="check-col"><input type="checkbox" id="check-all" aria-label="Select all visible"></th>
+                <th>PART NUMBER</th><th>TYPE / DESCRIPTION</th><th>PACKAGE</th>
+                <th>QUANTITY</th><th>LOCATION</th><th>STATUS</th><th></th>
+              </tr></thead>
+              <tbody id="rows"></tbody>
+            </table>
+          </div>
+          <div class="table-footer"><span id="table-footer">0 entries</span><span>Click a row to edit its attributes</span></div>
+        </div>
+        <p class="footer-hint">Manufacturer values require verification for marketplace parts. Your local database is the master copy; Excel files are automatically exported backups.</p>
+      </section>
+    </main>
+  </div>
+
+  <div class="overlay hidden" id="editor-overlay">
+    <div class="scrim" data-close="editor"></div>
+    <section class="editor" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+      <header class="drawer-head"><div><div class="eyebrow">ELECTROCAT / PART DETAILS</div><h2 id="editor-title">Add entry</h2></div><button class="icon-button" data-close="editor" aria-label="Close">×</button></header>
+      <div class="drawer-body">
+        <div class="notice" id="editor-notice">Enter a part name, then click Autofill to suggest the part-specific fields.</div>
+        <div class="form-row full"><label>Part name / part number<input id="f-part_number" placeholder="e.g. AO3400A" required></label></div>
+        <div class="form-row">
+          <label>Source or listing URL<input id="f-source_url" type="url" placeholder="https://…"></label>
+          <label class="button-field"><span>Automatic extraction</span><button class="btn outline" id="autofill-btn">⌕ Autofill details</button></label>
+        </div>
+        <div class="form-row"><label>Category<select id="f-category"></select></label><label>Subtype<input id="f-subtype" placeholder="N-channel, enhancement…"></label></div>
+        <div class="form-row full"><label>Description<textarea id="f-description" rows="2"></textarea></label></div>
+        <div class="form-row"><label>Manufacturer<input id="f-manufacturer"></label><label>Package<input id="f-package" placeholder="SOT-23"></label></div>
+        <div class="form-row"><label>Quantity (optional)<input id="f-quantity" type="number" min="0" step="1"></label><label>Storage location (optional)<input id="f-location" placeholder="Drawer A3, box 12…"></label></div>
+        <div class="form-row"><label>Supplier<input id="f-supplier"></label><label>Review status<select id="f-status"><option value="reference">Reference specs</option><option value="review">Needs review</option><option value="confirmed">Personally confirmed</option></select></label></div>
+        <div class="form-row"><label>Purchase URL<input id="f-purchase_url" type="url"></label><label>Datasheet URL<input id="f-datasheet_url" type="url"></label></div>
+        <div class="section-title"><h3>Key parameters</h3><button class="tiny-button" id="add-attribute">＋ Add parameter</button></div>
+        <div id="attribute-rows" class="dynamic-rows"></div>
+        <div class="section-title"><h3>Pinout</h3><button class="tiny-button" id="add-pin">＋ Add pin</button></div>
+        <p class="section-subtext">Use the manufacturer's top-view pin numbering. Unknown pins should remain blank.</p>
+        <div id="pin-rows" class="dynamic-rows"></div>
+        <div class="form-row full"><label>Notes<textarea id="f-notes" rows="3"></textarea></label></div>
+      </div>
+      <footer class="drawer-foot"><button class="btn danger-text" id="delete-entry">Delete</button><div class="spacer"></div><button class="btn ghost" data-close="editor">Cancel</button><button class="btn primary" id="save-entry">Save entry</button></footer>
+    </section>
+  </div>
+
+  <div class="overlay hidden" id="label-overlay">
+    <div class="scrim" data-close="label"></div>
+    <section class="label-modal" role="dialog" aria-modal="true" aria-labelledby="label-title">
+      <header class="drawer-head"><div><div class="eyebrow">CAT PRINTER / NATIVE BITMAP</div><h2 id="label-title">Sticker preview</h2></div><button class="icon-button" data-close="label" aria-label="Close">×</button></header>
+      <div class="label-content">
+        <div class="preview-box"><canvas id="label-canvas" width="384" height="352" aria-label="384 by 352 pixel label preview"></canvas><span>384 × 352 px · black / white PNG</span></div>
+        <div class="label-details"><h3 id="label-part">AO3400A</h3><p id="label-count">1 part selected</p><div class="notice subtle">The file is generated at exactly 384 px width. In print.natey.me, use <strong>Image Mode</strong>, disable auto-scaling if needed, and keep width at 384 px.</div><button class="btn primary wide" id="download-labels">↓ Download PNG</button><a class="btn outline wide" href="https://print.natey.me/" target="_blank" rel="noopener">Open Cat Printer ↗</a><p class="small-help">Multiple selections download as a ZIP containing one PNG per part. Upload individual PNGs in the printer interface.</p></div>
+      </div>
+    </section>
+  </div>
+  <div class="toast hidden" id="toast"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

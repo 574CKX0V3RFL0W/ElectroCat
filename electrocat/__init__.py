@@ -1,0 +1,1 @@
+"""ElectroCat: local electronics inventory."""
