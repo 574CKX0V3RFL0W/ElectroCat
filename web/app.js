@@ -2,6 +2,7 @@
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let parts = [], templates = {}, editId = null, labelIds = [];
+let printer = null, printing = false, stopBatchRequested = false;
 const selection = new Set();
 const fields = ["part_number","category","subtype","description","manufacturer","package","quantity",
   "location","supplier","purchase_url","source_url","datasheet_url","status","notes"];
@@ -239,6 +240,7 @@ function showLabels(ids) {
   $('label-part').textContent=ids.length===1?first.part_number:ids.length+' component labels';
   $('label-count').textContent=ids.length+' '+(ids.length===1?'part':'parts')+' selected';
   $('download-labels').textContent=ids.length===1?'↓ Download PNG':'↓ Download '+ids.length+' PNGs (ZIP)';
+  $('print-labels').textContent=ids.length===1?'Print label':'Print '+ids.length+' labels';
   renderLabel(first);$('label-overlay').classList.remove('hidden');
 }
 function fileName(p) {return (p.part_number||'component').replace(/[^\w-]/g,'_').slice(0,80)+'_EC-'+p.id+'.png';}
@@ -273,6 +275,100 @@ function zipFiles(files) {
   e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);
   e.setUint32(12,centralSize,true);e.setUint32(16,centralAt,true);add(new Uint8Array(e.buffer));
   return new Blob(bytes,{type:'application/zip'});
+}
+
+function bluetoothAvailable() {
+  return Boolean(window.isSecureContext && navigator.bluetooth && window.ElectroCatMXW01);
+}
+function setPrinterState(state, message) {
+  const node=$('printer-state');
+  node.className='printer-state'+(state==='connected'?' connected':state==='error'?' error':'');
+  node.textContent=message || ({connecting:'Connecting…',connected:'Connected',error:'Needs attention',disconnected:'Not connected'}[state] || state);
+  setPrinterControls();
+}
+function setPrinterControls() {
+  const available=bluetoothAvailable(), connected=Boolean(printer?.connected);
+  $('connect-printer').disabled=!available||printing;
+  $('connect-printer').classList.toggle('hidden',connected);
+  $('disconnect-printer').classList.toggle('hidden',!connected);
+  $('disconnect-printer').disabled=printing;
+  $('print-intensity').disabled=printing;
+  $('print-labels').disabled=!connected||printing||!labelIds.length;
+  $('cancel-print').classList.toggle('hidden',!printing||labelIds.length<2);
+}
+function initPrinterControls() {
+  let intensity=93;
+  try {
+    const saved=localStorage.getItem('electrocat-mxw01-intensity');
+    if(saved!==null&&Number.isFinite(Number(saved)))intensity=Number(saved);
+  } catch (_) {}
+  intensity=Math.max(0,Math.min(192,intensity));
+  $('print-intensity').value=String(intensity);
+  $('intensity-value').textContent=intensity+' / 192';
+  if (!window.isSecureContext) {
+    $('bluetooth-help').textContent='Web Bluetooth requires localhost or HTTPS. PNG download still works.';
+    setPrinterState('error','Insecure page');
+  } else if (!navigator.bluetooth) {
+    $('bluetooth-help').textContent='Web Bluetooth is not available here. Use Chrome or Edge, or download PNG files.';
+    setPrinterState('error','Unavailable');
+  } else {
+    setPrinterState('disconnected');
+  }
+}
+function getPrinter() {
+  if (!printer) printer=new window.ElectroCatMXW01.MXW01Printer({
+    onState:event=>setPrinterState(event.state,event.name)
+  });
+  return printer;
+}
+async function connectPrinter() {
+  setPrinterState('connecting');
+  try {
+    const name=await getPrinter().connect();
+    setPrinterState('connected',name);
+    toast('MXW01 connected.');
+  } catch (err) {
+    if (err.name==='NotFoundError') setPrinterState('disconnected');
+    else setPrinterState('error','Connection failed');
+    toast(err.name==='NotFoundError'?'Printer selection cancelled.':'Could not connect: '+err.message);
+  }
+}
+function disconnectPrinter() {
+  printer?.disconnect();
+  setPrinterState('disconnected');
+}
+async function printLabelsDirect() {
+  if (!printer?.connected) return toast('Connect the MXW01 first.');
+  printing=true;stopBatchRequested=false;setPrinterControls();
+  $('cancel-print').disabled=false;$('cancel-print').textContent='Stop after current label';
+  $('print-progress').classList.remove('hidden');
+  $('print-progress-bar').value=0;
+  try {
+    const total=labelIds.length, intensity=Number($('print-intensity').value);
+    for(let index=0;index<total;index++){
+      if(stopBatchRequested)break;
+      const part=parts.find(p=>p.id===labelIds[index]);
+      if(!part)continue;
+      $('print-progress-text').textContent=`Printing ${index+1}/${total}: ${part.part_number}`;
+      const canvas=document.createElement('canvas');renderLabel(part,canvas);
+      await printer.printCanvas(canvas,{intensity,onProgress:value=>{
+        $('print-progress-bar').value=((index+value/100)/total)*100;
+      }});
+      $('print-progress-bar').value=((index+1)/total)*100;
+      if(index<total-1&&!stopBatchRequested)await new Promise(resolve=>setTimeout(resolve,1500));
+    }
+    const completed=stopBatchRequested?'Batch stopped.':'Printed '+labelIds.length+(labelIds.length===1?' label.':' labels.');
+    $('print-progress-text').textContent=completed;
+    toast(completed);
+  } catch(err) {
+    setPrinterState('error','Print failed');
+    $('print-progress-text').textContent='Print failed — PNG fallback is still available.';
+    toast('MXW01 print failed: '+err.message);
+  } finally {
+    printing=false;stopBatchRequested=false;
+    $('cancel-print').disabled=false;$('cancel-print').textContent='Stop after current label';
+    setPrinterControls();
+  }
 }
 async function downloadLabels() {
   const btn=$('download-labels');btn.disabled=true;btn.textContent='Preparing…';
@@ -315,6 +411,17 @@ $('f-category').addEventListener('change',()=>{
 });
 $('print-selected').addEventListener('click',()=>selection.size?showLabels([...selection]):toast('Select one or more entries first.'));
 $('nav-print').addEventListener('click',()=>selection.size?showLabels([...selection]):toast('Select one or more entries first.'));
+$('connect-printer').addEventListener('click',connectPrinter);
+$('disconnect-printer').addEventListener('click',disconnectPrinter);
+$('print-labels').addEventListener('click',printLabelsDirect);
+$('cancel-print').addEventListener('click',()=>{
+  stopBatchRequested=true;$('cancel-print').disabled=true;$('cancel-print').textContent='Stopping after current label…';
+});
+$('print-intensity').addEventListener('input',event=>{
+  $('intensity-value').textContent=event.target.value+' / 192';
+  try {localStorage.setItem('electrocat-mxw01-intensity',event.target.value);} catch (_) {}
+});
 $('download-labels').addEventListener('click',downloadLabels);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){close('editor');close('label');}});
+initPrinterControls();
 load();

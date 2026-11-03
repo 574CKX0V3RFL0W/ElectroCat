@@ -107,8 +107,15 @@ class HttpTests(unittest.TestCase):
     def test_end_to_end_crud_and_excel(self):
         entries=json.loads(self.request("/api/entries")[0])
         self.assertEqual(entries[0]["part_number"],"AO3400A")
-        self.assertIn(b"ElectroCat", self.request("/")[0])
+        index=self.request("/")[0]
+        self.assertIn(b"ElectroCat", index)
+        self.assertIn(b'id="connect-printer"', index)
+        self.assertIn(b'id="print-intensity"', index)
+        self.assertIn(b'id="print-labels"', index)
         self.assertIn(b"function renderLabel", self.request("/app.js")[0])
+        driver=self.request("/mxw01.js")[0]
+        self.assertIn(b"class MXW01Printer", driver)
+        self.assertIn(b"0000ae03-0000-1000-8000-00805f9b34fb", driver)
         new=json.loads(self.request("/api/entries","POST",{
             "part_number":"TEST555","category":"IC","quantity":4,
             "attributes":[{"label":"VCC","value":"5 V"}]

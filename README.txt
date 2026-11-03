@@ -12,8 +12,9 @@ REQUIREMENTS
 - Windows 10/11, with Chrome or Microsoft Edge.
 - Python 3.10 or newer (download from https://www.python.org/downloads/).
   During Python installation, enable "Add Python to PATH" if offered.
-- MXW01 Cat Printer (for the linked print.natey.me website).
-- Internet only for product-page lookup, optional AI, and printing website.
+- MXW01 Cat Printer (optional, for direct Chrome/Edge Web Bluetooth printing).
+- Internet only for product-page lookup, optional AI, and the fallback printing
+  website. Direct printer access and PNG generation stay local.
 There are NO required pip packages.
 
 STEP 1 — INSTALL AND START
@@ -76,15 +77,17 @@ STEP 4 — EDIT, SEARCH, AND PRINT STICKERS
 3. Click any row to edit its fields, parameters, and pinout.
 4. Select one or more checkboxes on the far left.
 5. Click "Print stickers" to preview the first selected label.
-6. Single selection: click "Download PNG" (384 x 352 px).
-   Multiple selections: download the ZIP of individual PNGs.
-7. Click "Open Cat Printer", choose Image Mode at https://print.natey.me/.
-8. Upload your PNG, keep native 384 px width with no unintended scaling,
-   connect your MXW01 over Bluetooth, and print.
+6. Turn on the MXW01 and close its phone app. In Chrome or Edge, click
+   "Connect printer" and choose the device whose name starts with MXW01.
+7. Keep the first test at the default intensity (93 / 192), then click
+   "Print label" or "Print N labels". Batches print sequentially.
+8. Fallback: click "Download PNG" (384 x 352 px). Multiple selections
+   download as a ZIP. Import a PNG in Image Mode at https://print.natey.me/.
 
 The included sample\AO3400A.png is an immediately printable test image.
-Printing is linked to the existing MXW01 app; direct Bluetooth printing
-from inside ElectroCat is not yet implemented or hardware-tested.
+Direct printing uses a reverse-engineered protocol and still needs validation
+on the owner's physical printer. Keep the PNG fallback while testing. Web
+Bluetooth is unavailable in Firefox, Safari, and browsers on iPhone/iPad.
 
 STEP 5 — FIND YOUR BACKUPS
 --------------------------
@@ -156,11 +159,16 @@ TROUBLESHOOTING
 - Excel locked: Close Excel; dated backups still preserve every edit.
 - Printer image scaled: Import the PNG at exactly 384 px width and use the
   MXW01 image-mode controls. The file itself is already 384 px wide.
+- Printer not listed: Use Chrome/Edge, turn the MXW01 on, and fully close its
+  phone app. Only one app can connect at a time.
+- Web Bluetooth unavailable: Open the local http://127.0.0.1:8765 address in
+  Chrome/Edge, or use Download PNG.
 - To stop ElectroCat, press Ctrl+C in the command window or close it.
 
 DEVELOPERS / TESTING
 --------------------
   python -m unittest discover -s tests -v
+  node tests\mxw01_protocol.cjs
   python app.py --port 8765 --no-browser
 
 No online server is published; all local application data stays on your PC
