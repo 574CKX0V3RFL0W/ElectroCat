@@ -106,6 +106,12 @@ async function testProtocolAndTransport() {
   assert.deepEqual(controlCommands.map(frame => frame[2]),
     [COMMAND.intensity, COMMAND.status, COMMAND.print, COMMAND.flush]);
   assert.equal(progress.at(-1), 100);
+  controlCommands.length = 0;
+  dataRows.length = 0;
+  await printer.printRaster(raster, 2, {intensity: 75});
+  assert.deepEqual(controlCommands.map(frame => frame[2]),
+    [COMMAND.intensity, COMMAND.status, COMMAND.print, COMMAND.flush],
+    'default printing must not add a wasteful paper-feed command');
   printer.disconnect();
   assert.equal(printer.connected, false);
   assert.deepEqual(states, ['connecting', 'connected', 'disconnected']);

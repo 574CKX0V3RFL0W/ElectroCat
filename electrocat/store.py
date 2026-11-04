@@ -93,6 +93,30 @@ class Inventory:
             self.backup()
             return self.get(cur.lastrowid)
 
+    def add_many(self, values_list):
+        """Insert a reviewed batch in one transaction and write one Excel backup."""
+        if not isinstance(values_list, list) or not values_list:
+            raise ValueError("Batch must contain at least one entry")
+        if len(values_list) > 100:
+            raise ValueError("A batch is limited to 100 entries")
+        with self.lock:
+            prepared = [self._validate(values) for values in values_list]
+            stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            keys = list(FIELDS)
+            sql = f"INSERT INTO parts ({','.join(keys)},created_at,updated_at) VALUES ({','.join('?' for _ in keys)},?,?)"
+            ids = []
+            try:
+                for data in prepared:
+                    stored = [json.dumps(data[k], ensure_ascii=False)
+                              if k in ("attributes", "pinout") else data[k] for k in keys]
+                    ids.append(self.db.execute(sql, stored + [stamp, stamp]).lastrowid)
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+                raise
+            self.backup()
+            return [self.get(entry_id) for entry_id in ids]
+
     def update(self, entry_id, changes):
         with self.lock:
             old = self.get(entry_id)

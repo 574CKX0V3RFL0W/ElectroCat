@@ -273,7 +273,7 @@
       if (result.length >= 3 && result[1] === result[2] && result[1] !== expectedCrc) {
         throw new Error('MXW01 image checksum mismatch; the label may be incomplete.');
       }
-      const feedLines = Math.max(0, Math.min(255, Number(options.feedLines ?? 18) || 0));
+      const feedLines = Math.max(0, Math.min(255, Number(options.feedLines ?? 0) || 0));
       if (feedLines) await this._send(COMMAND.feed, [feedLines, 0x00]);
       onProgress(100);
       return {height, bytes: raster.length, checksum: expectedCrc};

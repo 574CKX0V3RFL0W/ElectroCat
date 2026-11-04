@@ -3,4 +3,7 @@ __pycache__/
 .venv/
 data/
 *.log
-
+/electrocat.db
+/ElectroCat_inventory.xlsx
+/~$ElectroCat_inventory.xlsx
+/backups/

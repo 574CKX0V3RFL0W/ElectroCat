@@ -9,10 +9,10 @@ import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 from electrocat.data import TEMPLATES
-from electrocat.lookup import autofill
+from electrocat.lookup import ai_status, autofill
 from electrocat.store import Inventory
 
 ROOT = Path(__file__).resolve().parent
@@ -21,7 +21,7 @@ WEB = ROOT / "web"
 
 def create_handler(inventory):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "ElectroCat/1.0"
+        server_version = "ElectroCat/1.1"
 
         def _respond(self, payload, code=200, content_type="application/json; charset=utf-8",
                      filename=None):
@@ -40,7 +40,7 @@ def create_handler(inventory):
         def _read_json(self):
             if not self.headers.get("Content-Type", "").startswith("application/json"):
                 raise ValueError("Expected application/json")
-            if int(self.headers.get("Content-Length", "0")) > 150000:
+            if int(self.headers.get("Content-Length", "0")) > 800000:
                 raise ValueError("Request too large")
             data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
             if not isinstance(data, dict):
@@ -67,6 +67,8 @@ def create_handler(inventory):
                     return self._respond({"ok": True, "data_folder": str(inventory.folder)})
                 if path == "/api/templates" and self.command == "GET":
                     return self._respond(TEMPLATES)
+                if path == "/api/ai/status" and self.command == "GET":
+                    return self._respond(ai_status())
                 if path == "/api/entries" and self.command == "GET":
                     return self._respond(inventory.list())
                 if path == "/api/entries" and self.command == "POST":
@@ -74,13 +76,28 @@ def create_handler(inventory):
                 if path == "/api/autofill" and self.command == "POST":
                     data = self._read_json()
                     return self._respond(autofill(data.get("name", ""), data.get("source_url", ""),
-                                                  bool(data.get("use_ai")), data.get("title", "")))
+                                                  bool(data.get("use_ai")), data.get("title", ""),
+                                                  data.get("captured")))
                 if path == "/api/capture" and self.command == "POST":
                     data = self._read_json()
                     draft = autofill(data.get("name") or data.get("title", ""), data.get("url", ""),
-                                     bool(data.get("use_ai")), data.get("title", ""))
+                                     bool(data.get("use_ai")), data.get("title", ""), data.get("captured"))
                     entry = inventory.add(draft["entry"])
                     return self._respond({"entry": entry, "warnings": draft["warnings"]}, 201)
+                if path == "/api/capture/batch" and self.command == "POST":
+                    data = self._read_json()
+                    items = data.get("items")
+                    if not isinstance(items, list) or not items or len(items) > 50:
+                        raise ValueError("Select between 1 and 50 listings")
+                    drafts = [autofill(item.get("name") or item.get("title", ""), item.get("url", ""),
+                                       bool(data.get("use_ai")), item.get("title", ""), item.get("captured"))
+                              for item in items if isinstance(item, dict)]
+                    if len(drafts) != len(items):
+                        raise ValueError("Every batch item must be an object")
+                    entries = inventory.add_many([draft["entry"] for draft in drafts])
+                    return self._respond({"entries": entries,
+                                          "warnings": [warning for draft in drafts
+                                                       for warning in draft["warnings"]]}, 201)
                 match = re.fullmatch(r"/api/entries/(\d+)", path)
                 if match:
                     id_ = int(match.group(1))

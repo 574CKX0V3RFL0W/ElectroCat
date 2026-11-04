@@ -107,6 +107,30 @@ function readForm() {
   obj.pinout = readDynamic('pin-rows');
   return obj;
 }
+function present(value) { return value !== null && value !== undefined && String(value).trim() !== ''; }
+function mergeRows(current=[], suggested=[], keys=[], identity=keys[0]) {
+  const result=current.map(item=>({...item}));
+  for(const incoming of suggested||[]){
+    if(!incoming||typeof incoming!=='object')continue;
+    const token=String(incoming[identity]||'').trim().toLowerCase();
+    let target=token?result.find(item=>String(item[identity]||'').trim().toLowerCase()===token):null;
+    if(!target){
+      if(keys.some(key=>present(incoming[key])))result.push(Object.fromEntries(keys.map(key=>[key,incoming[key]??''])));
+      continue;
+    }
+    for(const key of keys)if(!present(target[key])&&present(incoming[key]))target[key]=incoming[key];
+  }
+  return result;
+}
+function mergeAutofill(current, suggested) {
+  const merged={...current};
+  for(const key of fields){
+    if(!present(merged[key])&&present(suggested[key]))merged[key]=suggested[key];
+  }
+  merged.attributes=mergeRows(current.attributes,suggested.attributes,['label','value','note'],'label');
+  merged.pinout=mergeRows(current.pinout,suggested.pinout,['number','signal','label'],'number');
+  return merged;
+}
 function openEditor(id=null) {
   editId = id;
   $('editor-title').textContent = id ? 'Edit component' : 'Add entry';
@@ -129,15 +153,11 @@ async function autofillForm() {
       name:current.part_number, source_url:current.source_url,
       use_ai:true
     });
-    const filled = result.entry;
-    filled.quantity = current.quantity;
-    filled.location = current.location;
-    filled.supplier = current.supplier || filled.supplier;
-    if (editId) filled.status = current.status;
+    const filled = mergeAutofill(current,result.entry);
     fillForm(filled);
     $('editor-notice').textContent = result.warnings.join(' ');
     $('editor-notice').className = 'notice warning';
-    toast('Autofill complete. Please review the suggestions.');
+    toast('Autofill filled blank fields; your existing values were kept.');
   } catch(err) { toast('Autofill: ' + err.message); }
   finally { button.disabled = false; button.textContent = '⌕ Autofill details'; }
 }
@@ -173,11 +193,39 @@ function fitting(ctx, text, x, y, width, size, min=10, weight='bold') {
   while (text.length && ctx.measureText(text + '…').width > width) text = text.slice(0,-1);
   ctx.fillText(text + '…',x,y);
 }
+function wrapped(ctx,text,x,y,width,size,maxLines=2,lineHeight=size+3,weight='normal'){
+  const words=String(text||'').replace(/\s+/g,' ').trim().split(' ').filter(Boolean),lines=[];
+  ctx.font=`${weight} ${size}px Arial, sans-serif`;
+  while(words.length&&lines.length<maxLines){
+    let line=words.shift();
+    while(words.length&&ctx.measureText(line+' '+words[0]).width<=width)line+=' '+words.shift();
+    if(lines.length===maxLines-1&&words.length){
+      while(line.length&&ctx.measureText(line+'…').width>width)line=line.slice(0,-1);
+      line+='…';words.length=0;
+    }
+    lines.push(line);
+  }
+  lines.forEach((line,index)=>ctx.fillText(line,x,y+index*lineHeight));
+  return lines.length;
+}
+function packagePinCount(p){
+  if((p.pinout||[]).length)return p.pinout.length;
+  const pkg=String(p.package||'').toUpperCase();
+  if(/SOT[- ]?23|TO[- ]?220|TO[- ]?92/.test(pkg))return 3;
+  if(/SOT[- ]?223/.test(pkg))return 4;
+  const match=pkg.match(/(?:DIP|SOP|SOIC|SSOP|TSSOP|MSOP|QFN|DFN|LQFP|TQFP|BGA)[- ]?(\d+)/);
+  return match?Math.min(32,Number(match[1])):0;
+}
 function pinout(ctx, p) {
-  const pins = p.pinout || [];
-  if (!pins.length) return;
+  const supplied=p.pinout||[],count=packagePinCount(p);
+  const pins=supplied.length?supplied:Array.from({length:count},(_,i)=>({number:String(i+1),signal:'?',label:''}));
   ctx.fillStyle='#111'; fitting(ctx,'TOP VIEW',278,152,82,12,10);
-  if (pins.length === 3) {
+  if (!pins.length){
+    ctx.strokeStyle='#111';ctx.lineWidth=2;ctx.strokeRect(290,178,58,78);
+    ctx.beginPath();ctx.arc(300,187,3,0,Math.PI*2);ctx.fill();
+    fitting(ctx,p.package||'PACKAGE',294,220,50,11,8);
+    fitting(ctx,'PINOUT N/A',281,279,84,10,8);
+  } else if (pins.length === 3) {
     const byNumber = Object.fromEntries(pins.map(pin=>[pin.number,pin.signal]));
     ctx.fillRect(279,193,68,60);
     ctx.fillRect(302,178,22,17);
@@ -188,9 +236,19 @@ function pinout(ctx, p) {
     fitting(ctx,`1:${byNumber['1']||'?'}`,265,291,46,13,10);
     fitting(ctx,`2:${byNumber['2']||'?'}`,320,291,47,13,10);
   } else {
-    ctx.strokeStyle='#111'; ctx.lineWidth=2; ctx.strokeRect(278,176,76,83);
-    fitting(ctx, p.package || 'IC',290,220,50,13,10);
-    pins.slice(0,5).forEach((pin,i)=>fitting(ctx,`${pin.number}:${pin.signal}`,266,281+i*13,100,11,9));
+    const shown=pins.slice(0,16),leftCount=Math.ceil(shown.length/2),rightCount=shown.length-leftCount;
+    ctx.strokeStyle='#111';ctx.lineWidth=2;ctx.strokeRect(297,174,49,91);
+    ctx.beginPath();ctx.arc(304,182,3,0,Math.PI*2);ctx.fill();
+    const leg=(pin,index,total,left)=>{
+      const y=185+(index+1)*(68/(total+1)),inside=left?297:346,outside=left?283:360;
+      ctx.beginPath();ctx.moveTo(outside,y);ctx.lineTo(inside,y);ctx.stroke();
+      ctx.textAlign=left?'right':'left';fitting(ctx,String(pin.number||'?'),left?280:363,y+4,14,9,8);ctx.textAlign='left';
+    };
+    shown.slice(0,leftCount).forEach((pin,i)=>leg(pin,i,leftCount,true));
+    shown.slice(leftCount).forEach((pin,i)=>leg(pin,i,rightCount,false));
+    ctx.fillStyle='#111';fitting(ctx,p.package||`${pins.length}-PIN`,301,222,41,10,7);
+    const named=supplied.filter(pin=>pin.signal).slice(0,3);
+    named.forEach((pin,i)=>fitting(ctx,`${pin.number}:${pin.signal}`,278,280+i*12,88,10,8));
   }
 }
 function renderLabel(p, canvas=$('label-canvas')) {
@@ -200,12 +258,12 @@ function renderLabel(p, canvas=$('label-canvas')) {
   ctx.fillStyle='#111'; ctx.fillRect(0,0,LABEL_W,61);
   ctx.fillStyle='#fff'; fitting(ctx,p.part_number,13,39,350,34,19);
   ctx.fillStyle='#111';
-  fitting(ctx,`${p.category || 'COMPONENT'}  •  ${p.subtype || p.description || ''}`.toUpperCase(),15,84,351,16,10);
-  fitting(ctx,p.description || p.manufacturer || '',15,107,351,12,10,'normal');
-  ctx.fillRect(14,120,356,2);
+  fitting(ctx,`${p.category || 'COMPONENT'}${p.subtype?'  •  '+p.subtype:''}`.toUpperCase(),15,82,351,18,12);
+  wrapped(ctx,p.description||p.manufacturer||'No general description entered',15,104,351,17,2,20,'normal');
+  ctx.fillRect(14,132,356,2);
   const attributes=(p.attributes||[]).filter(a=>a.label && a.value).slice(0,6);
   attributes.forEach((a,i)=>{
-    const y=150+i*26;
+    const y=159+i*25;
     ctx.fillStyle='#111';
     fitting(ctx,a.label,16,y,139,15,10);
     ctx.textAlign='right';
@@ -241,7 +299,15 @@ function showLabels(ids) {
   $('label-count').textContent=ids.length+' '+(ids.length===1?'part':'parts')+' selected';
   $('download-labels').textContent=ids.length===1?'↓ Download PNG':'↓ Download '+ids.length+' PNGs (ZIP)';
   $('print-labels').textContent=ids.length===1?'Print label':'Print '+ids.length+' labels';
-  renderLabel(first);$('label-overlay').classList.remove('hidden');
+  const list=$('label-preview-list');list.innerHTML='';list.classList.toggle('batch',ids.length>1);
+  ids.forEach((id,index)=>{
+    const part=parts.find(p=>p.id===id);if(!part)return;
+    const figure=document.createElement('figure'),canvas=document.createElement('canvas'),caption=document.createElement('figcaption');
+    if(index===0)canvas.id='label-canvas';canvas.width=LABEL_W;canvas.height=LABEL_H;
+    canvas.setAttribute('aria-label',`${part.part_number} 384 by 352 pixel label preview`);
+    caption.textContent=`${index+1}. ${part.part_number}`;figure.append(canvas,caption);list.appendChild(figure);renderLabel(part,canvas);
+  });
+  $('label-overlay').classList.remove('hidden');
 }
 function fileName(p) {return (p.part_number||'component').replace(/[^\w-]/g,'_').slice(0,80)+'_EC-'+p.id+'.png';}
 function canvasPng(canvas) {return new Promise(resolve=>canvas.toBlob(resolve,'image/png'));}
@@ -293,18 +359,24 @@ function setPrinterControls() {
   $('disconnect-printer').classList.toggle('hidden',!connected);
   $('disconnect-printer').disabled=printing;
   $('print-intensity').disabled=printing;
+  $('paper-gap').disabled=printing;
   $('print-labels').disabled=!connected||printing||!labelIds.length;
   $('cancel-print').classList.toggle('hidden',!printing||labelIds.length<2);
 }
 function initPrinterControls() {
-  let intensity=93;
+  let intensity=93,gap=0;
   try {
     const saved=localStorage.getItem('electrocat-mxw01-intensity');
     if(saved!==null&&Number.isFinite(Number(saved)))intensity=Number(saved);
+    const savedGap=localStorage.getItem('electrocat-mxw01-gap');
+    if(savedGap!==null&&Number.isFinite(Number(savedGap)))gap=Number(savedGap);
   } catch (_) {}
   intensity=Math.max(0,Math.min(192,intensity));
+  gap=Math.max(0,Math.min(24,gap));
   $('print-intensity').value=String(intensity);
   $('intensity-value').textContent=intensity+' / 192';
+  $('paper-gap').value=String(gap);
+  $('paper-gap-value').textContent=gap?String(gap):'0 (minimum)';
   if (!window.isSecureContext) {
     $('bluetooth-help').textContent='Web Bluetooth requires localhost or HTTPS. PNG download still works.';
     setPrinterState('error','Insecure page');
@@ -344,18 +416,18 @@ async function printLabelsDirect() {
   $('print-progress').classList.remove('hidden');
   $('print-progress-bar').value=0;
   try {
-    const total=labelIds.length, intensity=Number($('print-intensity').value);
+    const total=labelIds.length, intensity=Number($('print-intensity').value),feedLines=Number($('paper-gap').value);
     for(let index=0;index<total;index++){
       if(stopBatchRequested)break;
       const part=parts.find(p=>p.id===labelIds[index]);
       if(!part)continue;
       $('print-progress-text').textContent=`Printing ${index+1}/${total}: ${part.part_number}`;
       const canvas=document.createElement('canvas');renderLabel(part,canvas);
-      await printer.printCanvas(canvas,{intensity,onProgress:value=>{
+      await printer.printCanvas(canvas,{intensity,feedLines,onProgress:value=>{
         $('print-progress-bar').value=((index+value/100)/total)*100;
       }});
       $('print-progress-bar').value=((index+1)/total)*100;
-      if(index<total-1&&!stopBatchRequested)await new Promise(resolve=>setTimeout(resolve,1500));
+      if(index<total-1&&!stopBatchRequested)await new Promise(resolve=>setTimeout(resolve,500));
     }
     const completed=stopBatchRequested?'Batch stopped.':'Printed '+labelIds.length+(labelIds.length===1?' label.':' labels.');
     $('print-progress-text').textContent=completed;
@@ -420,6 +492,10 @@ $('cancel-print').addEventListener('click',()=>{
 $('print-intensity').addEventListener('input',event=>{
   $('intensity-value').textContent=event.target.value+' / 192';
   try {localStorage.setItem('electrocat-mxw01-intensity',event.target.value);} catch (_) {}
+});
+$('paper-gap').addEventListener('input',event=>{
+  $('paper-gap-value').textContent=event.target.value==='0'?'0 (minimum)':event.target.value;
+  try {localStorage.setItem('electrocat-mxw01-gap',event.target.value);} catch (_) {}
 });
 $('download-labels').addEventListener('click',downloadLabels);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){close('editor');close('label');}});
