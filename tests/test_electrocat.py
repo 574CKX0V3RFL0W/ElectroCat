@@ -1,6 +1,7 @@
 """Run from project root: python -m unittest discover -s tests -v"""
 import io
 import json
+import os
 import tempfile
 import threading
 import unittest
@@ -9,6 +10,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
 from app import create_handler
 from electrocat.lookup import autofill, clean_name, guess_category
@@ -66,6 +68,15 @@ class InventoryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.inventory.add({"part_number":"R1","quantity":-5})
 
+    def test_batch_add_is_one_transaction_and_one_backup(self):
+        entries = self.inventory.add_many([
+            {"part_number":"NE555P","category":"IC"},
+            {"part_number":"10K-RES","category":"Resistor","quantity":20},
+        ])
+        self.assertEqual([entry["part_number"] for entry in entries],["NE555P","10K-RES"])
+        self.assertEqual(len(self.inventory.list()),3)
+        self.assertEqual(len(list(Path(self.temp.name).glob("backups/*.xlsx"))),2)
+
 
 class LookupTests(unittest.TestCase):
     def test_known_part_curated_without_url(self):
@@ -79,6 +90,39 @@ class LookupTests(unittest.TestCase):
         self.assertEqual(result["entry"]["category"],"MOSFET")
         self.assertEqual(result["entry"]["status"],"review")
         self.assertTrue(all(not x["value"] for x in result["entry"]["attributes"]))
+
+    def test_rendered_browser_metadata_populates_listing_without_refetch(self):
+        captured={"title":"NE555P timer IC DIP-8", "sku":"NE555P",
+                  "description":"Precision timer in DIP-8 package",
+                  "manufacturer":"Texas Instruments",
+                  "attributes":[{"label":"Supply voltage","value":"4.5 V to 16 V"}],
+                  "pinout":[{"number":"1","signal":"GND","label":"Ground"}]}
+        result=autofill("Marketplace listing", "https://example.invalid/item/123", False,
+                        captured=captured)
+        entry=result["entry"]
+        self.assertEqual(entry["part_number"],"NE555P")
+        self.assertEqual(entry["package"],"DIP-8")
+        self.assertEqual(entry["manufacturer"],"Texas Instruments")
+        self.assertEqual(entry["attributes"][0]["value"],"4.5 V to 16 V")
+        self.assertEqual(entry["pinout"][0]["signal"],"GND")
+
+    def test_local_ai_is_structured_and_source_grounded(self):
+        model_output={"part_number":"NE555P","category":"IC","subtype":"Timer","package":"DIP-8",
+                      "manufacturer":"Invented Semiconductor","description":"Invented description",
+                      "attributes":[{"label":"Supply","value":"5 V","note":"listing"},
+                                    {"label":"Current","value":"99 A","note":"invented"}],
+                      "pinout":[{"number":"1","signal":"GND","label":"Ground"},
+                                {"number":"2","signal":"MAGIC","label":"Invented"}]}
+        response=io.BytesIO(json.dumps({"response":json.dumps(model_output)}).encode())
+        captured={"title":"NE555P timer DIP-8","description":"Timer with 5 V supply",
+                  "page_text":"NE555P timer DIP-8. Supply: 5 V. Pin 1: GND."}
+        with patch.dict(os.environ,{"ELECTROCAT_LOCAL_AI_MODEL":"qwen3:4b"}), \
+             patch("electrocat.lookup.urlopen",return_value=response):
+            entry=autofill("NE555P timer","",True,captured=captured)["entry"]
+        self.assertEqual(entry["category"],"IC")
+        self.assertEqual(entry["attributes"],[{"label":"Supply","value":"5 V","note":"listing"}])
+        self.assertEqual(entry["pinout"],[{"number":"1","signal":"GND","label":"Ground"}])
+        self.assertNotEqual(entry["manufacturer"],"Invented Semiconductor")
 
 
 class HttpTests(unittest.TestCase):
@@ -107,8 +151,15 @@ class HttpTests(unittest.TestCase):
     def test_end_to_end_crud_and_excel(self):
         entries=json.loads(self.request("/api/entries")[0])
         self.assertEqual(entries[0]["part_number"],"AO3400A")
-        self.assertIn(b"ElectroCat", self.request("/")[0])
+        index=self.request("/")[0]
+        self.assertIn(b"ElectroCat", index)
+        self.assertIn(b'id="connect-printer"', index)
+        self.assertIn(b'id="print-intensity"', index)
+        self.assertIn(b'id="print-labels"', index)
         self.assertIn(b"function renderLabel", self.request("/app.js")[0])
+        driver=self.request("/mxw01.js")[0]
+        self.assertIn(b"class MXW01Printer", driver)
+        self.assertIn(b"0000ae03-0000-1000-8000-00805f9b34fb", driver)
         new=json.loads(self.request("/api/entries","POST",{
             "part_number":"TEST555","category":"IC","quantity":4,
             "attributes":[{"label":"VCC","value":"5 V"}]
@@ -123,6 +174,19 @@ class HttpTests(unittest.TestCase):
             self.assertIn("TEST555",text)
         self.request(f"/api/entries/{new['id']}","DELETE")
         self.assertEqual(len(json.loads(self.request("/api/entries")[0])),1)
+
+    def test_batch_capture_uses_visible_listing_data(self):
+        before=len(list(Path(self.temp.name).glob("backups/*.xlsx")))
+        body={"use_ai":False,"items":[
+            {"name":"NE555P timer", "url":"https://example.invalid/item/1",
+             "captured":{"title":"NE555P timer DIP-8","sku":"NE555P","description":"Timer IC"}},
+            {"name":"BME280 sensor module", "url":"https://example.invalid/item/2",
+             "captured":{"title":"BME280 sensor module","sku":"BME280","description":"Temperature sensor module"}},
+        ]}
+        result=json.loads(self.request("/api/capture/batch","POST",body)[0])
+        self.assertEqual(len(result["entries"]),2)
+        self.assertEqual(result["entries"][0]["package"],"DIP-8")
+        self.assertEqual(len(list(Path(self.temp.name).glob("backups/*.xlsx"))),before+1)
 
 
 if __name__=="__main__":

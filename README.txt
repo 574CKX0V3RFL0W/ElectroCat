@@ -1,4 +1,4 @@
-ELECTROCAT 1.0 — WINDOWS SETUP AND USER GUIDE
+ELECTROCAT 1.1 — WINDOWS SETUP AND USER GUIDE
 =============================================
 
 WHAT IS INCLUDED
@@ -12,8 +12,9 @@ REQUIREMENTS
 - Windows 10/11, with Chrome or Microsoft Edge.
 - Python 3.10 or newer (download from https://www.python.org/downloads/).
   During Python installation, enable "Add Python to PATH" if offered.
-- MXW01 Cat Printer (for the linked print.natey.me website).
-- Internet only for product-page lookup, optional AI, and printing website.
+- MXW01 Cat Printer (optional, for direct Chrome/Edge Web Bluetooth printing).
+- Internet only for product-page lookup, optional AI, and the fallback printing
+  website. Direct printer access and PNG generation stay local.
 There are NO required pip packages.
 
 STEP 1 — INSTALL AND START
@@ -32,6 +33,8 @@ STEP 2 — REGISTER A PART MANUALLY
 2. Enter a part number (e.g. AO3400A), optionally paste the purchase URL.
 3. Click "Autofill details" and wait. The app checks its verified built-in
    reference, free page metadata, and optional AI enrichment.
+   Autofill fills blank fields and merges new rows; it does not erase values
+   you already entered.
 4. Check the suggested manufacturer, ratings, package, and top-view pinout.
 5. Add any missing parameters. The parameter labels adapt to the part category.
 6. Optionally enter quantity, supplier, and drawer/storage location.
@@ -65,6 +68,23 @@ EXTENSION METHOD B — PRODUCT URL / TOOLBAR
 4. Click "Add to my parts list".
 5. Review the created entry in ElectroCat.
 
+EXTENSION METHOD C — SHOPPING HISTORY / VISIBLE LISTING BATCH
+1. Open an AliExpress or Allegro orders/history/listing page and sign in.
+2. Scroll until the product cards you want are visible.
+3. Click the ElectroCat extension and then "Scan visible listings on this page".
+4. Uncheck products you already own or do not want to register.
+5. Click "Add selected entries". Approve optional AliExpress/Allegro access if
+   you want ElectroCat to open each selected link in an inactive browser tab,
+   read it using your signed-in session, and close it automatically. If you
+   decline, ElectroCat uses the text from the visible product cards.
+6. ElectroCat creates all selected provisional entries and writes one Excel
+   backup for the batch.
+7. Review each new entry. Marketplace values and pinouts are never considered
+   confirmed until you compare them with a manufacturer datasheet.
+
+If you update ElectroCat's extension files, open chrome://extensions (or
+edge://extensions) and click Reload on the ElectroCat card.
+
 NOTE: Chrome does not allow extensions to add a custom right-click command
 inside the address bar itself. The extension toolbar handles that scenario.
 Right-click also works on a product link or elsewhere on the page.
@@ -75,16 +95,19 @@ STEP 4 — EDIT, SEARCH, AND PRINT STICKERS
 2. Filter by category if needed.
 3. Click any row to edit its fields, parameters, and pinout.
 4. Select one or more checkboxes on the far left.
-5. Click "Print stickers" to preview the first selected label.
-6. Single selection: click "Download PNG" (384 x 352 px).
-   Multiple selections: download the ZIP of individual PNGs.
-7. Click "Open Cat Printer", choose Image Mode at https://print.natey.me/.
-8. Upload your PNG, keep native 384 px width with no unintended scaling,
-   connect your MXW01 over Bluetooth, and print.
+5. Click "Print stickers" to preview every selected label.
+6. Turn on the MXW01 and close its phone app. In Chrome or Edge, click
+   "Connect printer" and choose the device whose name starts with MXW01.
+7. Keep the first test at the default intensity (93 / 192), then click
+   "Print label" or "Print N labels". Leave "Extra paper after each label"
+   at 0 (minimum) to avoid wasted blank paper. Batches print sequentially.
+8. Fallback: click "Download PNG" (384 x 352 px). Multiple selections
+   download as a ZIP. Import a PNG in Image Mode at https://print.natey.me/.
 
 The included sample\AO3400A.png is an immediately printable test image.
-Printing is linked to the existing MXW01 app; direct Bluetooth printing
-from inside ElectroCat is not yet implemented or hardware-tested.
+Direct printing uses a reverse-engineered protocol and still needs validation
+on the owner's physical printer. Keep the PNG fallback while testing. Web
+Bluetooth is unavailable in Firefox, Safari, and browsers on iPhone/iPad.
 
 STEP 5 — FIND YOUR BACKUPS
 --------------------------
@@ -112,8 +135,30 @@ To choose a different data folder (PowerShell example):
 STEP 6 — OPTIONAL AI ENRICHMENT
 -------------------------------
 No AI API key is required. With no key, built-in reference data and public
-product-page metadata are used. AI can extract additional fields from the
-listing text when an API key is explicitly configured.
+product-page metadata are used. The extension can also read the currently
+rendered page in your signed-in tab.
+
+OFFLINE OPTION (RECOMMENDED FOR EXPERIMENTING)
+1. Install Ollama for Windows from https://ollama.com/download
+2. In PowerShell, download a modest multilingual general model:
+
+  ollama pull qwen3:4b
+
+3. Start ElectroCat from the same PowerShell window:
+
+  $env:ELECTROCAT_LOCAL_AI_MODEL = "qwen3:4b"
+  python app.py
+
+Ollama runs at http://127.0.0.1:11434 by default. The model helps normalize
+electronics, robotics, DIY, and maker terminology. It may use general
+knowledge for names, categories, subtypes, and package families. ElectroCat
+requires exact ratings and pin assignments to be present in the captured
+listing evidence; otherwise they stay blank. Larger models may improve text
+understanding but need more memory and disk space.
+
+CLOUD OPENAI-COMPATIBLE OPTION
+AI can extract additional fields from listing text when an API key is
+explicitly configured:
 
 In PowerShell, before running python app.py:
   $env:ELECTROCAT_AI_API_KEY = "your-key-here"
@@ -153,14 +198,23 @@ TROUBLESHOOTING
 - Dashboard unreachable: Keep start_electrocat.bat running; check port 8765.
 - Browser extension can't connect: The local web service must be running.
 - Unknown parts not fully populated: Add a source URL and/or verify manually.
+- Shopping-history scan finds nothing: Scroll product cards into view, use the
+  toolbar button (not an address-bar menu), and reload the extension after an
+  update. Some site redesigns may require updating the product-link heuristic.
 - Excel locked: Close Excel; dated backups still preserve every edit.
 - Printer image scaled: Import the PNG at exactly 384 px width and use the
   MXW01 image-mode controls. The file itself is already 384 px wide.
+- Printer not listed: Use Chrome/Edge, turn the MXW01 on, and fully close its
+  phone app. Only one app can connect at a time.
+- Large blank gap between labels: Set "Extra paper after each label" to 0.
+- Web Bluetooth unavailable: Open the local http://127.0.0.1:8765 address in
+  Chrome/Edge, or use Download PNG.
 - To stop ElectroCat, press Ctrl+C in the command window or close it.
 
 DEVELOPERS / TESTING
 --------------------
   python -m unittest discover -s tests -v
+  node tests\mxw01_protocol.cjs
   python app.py --port 8765 --no-browser
 
 No online server is published; all local application data stays on your PC

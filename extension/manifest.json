@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "ElectroCat — Add to my parts list",
-  "version": "1.0.0",
-  "description": "Capture electronic parts from selected text, product links and page URLs into your local ElectroCat inventory.",
+  "version": "1.1.0",
+  "description": "Capture one product or batch-import visible AliExpress, Allegro and other product listings into local ElectroCat.",
   "permissions": ["contextMenus", "tabs", "activeTab", "scripting"],
   "host_permissions": ["http://127.0.0.1:8765/*", "http://localhost:8765/*"],
+  "optional_host_permissions": ["https://*.aliexpress.com/*", "https://*.allegro.pl/*"],
   "background": {"service_worker": "background.js"},
   "action": {"default_title": "Add to ElectroCat", "default_popup": "popup.html"}
 }

@@ -107,12 +107,29 @@
     <section class="label-modal" role="dialog" aria-modal="true" aria-labelledby="label-title">
       <header class="drawer-head"><div><div class="eyebrow">CAT PRINTER / NATIVE BITMAP</div><h2 id="label-title">Sticker preview</h2></div><button class="icon-button" data-close="label" aria-label="Close">×</button></header>
       <div class="label-content">
-        <div class="preview-box"><canvas id="label-canvas" width="384" height="352" aria-label="384 by 352 pixel label preview"></canvas><span>384 × 352 px · black / white PNG</span></div>
-        <div class="label-details"><h3 id="label-part">AO3400A</h3><p id="label-count">1 part selected</p><div class="notice subtle">The file is generated at exactly 384 px width. In print.natey.me, use <strong>Image Mode</strong>, disable auto-scaling if needed, and keep width at 384 px.</div><button class="btn primary wide" id="download-labels">↓ Download PNG</button><a class="btn outline wide" href="https://print.natey.me/" target="_blank" rel="noopener">Open Cat Printer ↗</a><p class="small-help">Multiple selections download as a ZIP containing one PNG per part. Upload individual PNGs in the printer interface.</p></div>
+        <div class="preview-box"><div class="label-preview-list" id="label-preview-list"><figure><canvas id="label-canvas" width="384" height="352" aria-label="384 by 352 pixel label preview"></canvas></figure></div><span>Every preview is 384 × 352 px · black / white PNG</span></div>
+        <div class="label-details">
+          <h3 id="label-part">AO3400A</h3><p id="label-count">1 part selected</p>
+          <section class="printer-panel" aria-labelledby="printer-heading">
+            <div class="printer-heading"><strong id="printer-heading">Direct MXW01 printing</strong><span class="printer-state" id="printer-state">Not connected</span></div>
+            <p id="bluetooth-help">Use Chrome or Edge on this local page. Turn on the printer and close any phone app connected to it.</p>
+            <div class="printer-buttons"><button class="btn outline" id="connect-printer">Connect printer</button><button class="btn ghost hidden" id="disconnect-printer">Disconnect</button></div>
+            <label class="intensity-control" for="print-intensity"><span>Print intensity</span><output id="intensity-value" for="print-intensity">93 / 192</output><input id="print-intensity" type="range" min="0" max="192" value="93"></label>
+            <label class="intensity-control" for="paper-gap"><span>Extra paper after each label</span><output id="paper-gap-value" for="paper-gap">0 (minimum)</output><input id="paper-gap" type="range" min="0" max="24" value="0"></label>
+            <button class="btn primary wide" id="print-labels" disabled>Print label</button>
+            <button class="btn ghost wide hidden" id="cancel-print">Stop after current label</button>
+            <div class="print-progress hidden" id="print-progress"><progress id="print-progress-bar" max="100" value="0"></progress><span id="print-progress-text">Preparing…</span></div>
+          </section>
+          <div class="fallback-divider"><span>PNG fallback</span></div>
+          <button class="btn outline wide" id="download-labels">↓ Download PNG</button>
+          <a class="btn ghost wide" href="https://print.natey.me/" target="_blank" rel="noopener">Open external Cat Printer tool ↗</a>
+          <p class="small-help">Direct batches print one label at a time. PNG download remains available and multiple selections are packaged as a ZIP.</p>
+        </div>
       </div>
     </section>
   </div>
   <div class="toast hidden" id="toast"></div>
+  <script src="/mxw01.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>
